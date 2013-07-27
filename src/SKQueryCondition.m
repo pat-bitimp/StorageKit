@@ -3,8 +3,8 @@
 @implementation SKQueryCondition
 @synthesize selector, operator, value, binding;
 + conditionForSelector: (SEL)selector 
-            andBinding: (Binding)binding
-           andOperator: (QueryOperator)operator 
+            andBinding: (SKBinding)binding
+           andOperator: (SKQueryOperator)operator 
               andValue: value
 {
 	SKQueryCondition* obj = [self new];

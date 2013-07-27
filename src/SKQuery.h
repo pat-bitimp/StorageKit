@@ -6,14 +6,14 @@ typedef enum {
 	Unordered = 0,
 	Ascending = 1,
 	Descending = 2
-} OrderDirection;
+} SKOrderDirection;
 
 
 @interface SKQuery : OFObject
 {
 	OFList* conditions;
 	Class queryingClass;
-	OrderDirection orderDirection;
+	SKOrderDirection orderDirection;
 	SEL orderSelector;
 	uint32_t limit;
 	uint32_t offset;
@@ -22,7 +22,7 @@ typedef enum {
 @property (copy) OFList* conditions;
 @property uint32_t limit;
 @property uint32_t offset;
-@property OrderDirection orderDirection;
+@property SKOrderDirection orderDirection;
 @property SEL orderSelector;
 + queryOverClass: (Class)class;
 - where: (SEL)selector isEqual: (id)value;

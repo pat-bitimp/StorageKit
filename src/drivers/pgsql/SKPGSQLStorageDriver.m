@@ -19,7 +19,7 @@ static OFTLSKey* connectionMappingKey;
 
 	SKPGSQLStorageDriver* obj = [self new];
 
-	obj.connectionParameters = connectionParameters;
+	[obj setConnectionParameters: connectionParameters];
 
 	return obj;
 }
@@ -57,26 +57,103 @@ static OFTLSKey* connectionMappingKey;
 
 - (id)getObjectForId: (uint32_t)id andClass: (Class)class
 {
+
 	return nil;
 }
 
 - (void)deleteObject: (SKObject*)object
 {
-	OFString* queryString = [OFString stringWithFormat: @"DELETE FROM %@ WHERE "
-		@"id = %d;", [self escapeString: [object className]], [object id]];
+	OFString* queryString = [OFString stringWithFormat: @"DELETE FROM \"%@\" WHERE "
+		@"\"ID\" = %d;", [self escapeString: [object className]], [object ID]];
 
 	[[self session] executeCommand: (OFConstantString*)queryString];
 }
 
 - (void)saveObject: (SKObject*)object
 {
+	OFConstantString* format = @"INSERT INTO \"%@\"(%@) VALUES(%@) RETURNING ID;";
+	OFMutableString* propertyNames = [OFMutableString string];
+	OFMutableString* propertyValues = [OFMutableString string];
 
+	OFDictionary* properties = object._sk_properties;
+	OFArray* keys = [object._sk_properties allKeys];
+
+	for (OFString* key in keys)
+	{
+		OFString* seperator = [keys lastObject] == key ? @"" : @", ";
+
+    	[propertyNames appendString: 
+    		[OFString stringWithFormat: @"\"%@\"%@", 
+    									[self escapeString: key], 
+    									seperator]];
+
+    	OFString* value = [self escapeString: 
+    		[[properties objectForKey: key] description]];
+
+    	[propertyValues appendString: 
+    		[OFString stringWithFormat: @"\"%@\"%@", 
+    									value, 
+    									seperator]];
+	}
+
+	OFConstantString* queryString = [OFConstantString stringWithFormat: format, 
+		[self escapeString: [object className]], propertyNames, propertyValues];
+
+	PGResult* result = [[self session] executeCommand: queryString];
+
+	object.ID = [[[result objectAtIndex: 0] objectAtIndex: 0] uInt32Value];
 }
 
 - (void)updateObject: (SKObject*)object
 {
+	OFConstantString* format = @"UPDATE \"%@\" SET %@ WHERE \"ID\"=%d;";
 
+	OFMutableString* data = [OFMutableString string];
+
+	OFDictionary* properties = object._sk_properties;
+	OFArray* keys = [object._sk_properties allKeys];
+
+	for (OFString* key in keys)
+	{
+		OFString* seperator = [keys lastObject] == key ? @"" : @", ";
+
+    	OFString* value = [self escapeString: 
+    		[[properties objectForKey: key] description]];
+
+    	[data appendString: 
+    		[OFString stringWithFormat: @"\"%@\"='%@'%@",
+    									[self escapeString: key],
+    									value, 
+    									seperator]];
+	}
+
+	OFConstantString* queryString = [OFConstantString stringWithFormat: format, 
+		[self escapeString: [object className]], data, [object ID]];
+
+	[[self session] executeCommand: queryString];
 }
+
+- (id)objectInstanceFrom: (Class)class andData: (OFDictionary*)data
+{
+	OFObject* instance = [class new];
+
+	OFArray* keys = [data allKeys];
+
+	for (OFString* key in keys)
+	{
+		OFString* selectorName = 
+			[OFString stringWithFormat: @"set%@:", [key capitalizedString]];
+
+		SEL selector = sel_registerName([selectorName UTF8String]);
+
+		void (*setValue)(id, SEL, id) = 
+			(void(*)(id, SEL, id))[instance methodForSelector: selector];
+
+		setValue(instance, selector, [data objectForKey: key]);
+	}
+
+	return instance;
+} 
 
 - (id)getFirstItemForQuery: (SKQuery*)query
 {
@@ -99,13 +176,13 @@ static OFTLSKey* connectionMappingKey;
 		[OFString stringWithUTF8String: sel_getName(condition.selector)]];
 
 	OFString* binding = condition.binding == Where ? @" where "
-	                  : condition.binding == And ? @" and "
+	                  : condition.binding == And   ? @" and "
 	                  : @" or ";
 
-	OFString* operator = condition.operator == IsEqual ? @" = " 
-	                   : condition.operator == IsNotEqual ? @" <> "
+	OFString* operator = condition.operator == IsEqual       ? @" = " 
+	                   : condition.operator == IsNotEqual    ? @" <> "
 	                   : condition.operator == IsGreaterThen ? @" > "
-	                   : condition.operator == IsLowerThen ? @" < "
+	                   : condition.operator == IsLowerThen   ? @" < "
 	                   : @" LIKE ";
 
 	// in case we re comparing null objects we use null operators
@@ -119,10 +196,10 @@ static OFTLSKey* connectionMappingKey;
 	id value = condition.value;
 
 	// In case we compare with an SKObject, we want to compare the ids
-	if ([condition.value class] == [SKObject class])
+	if ([condition.value isKindOfClass: [SKObject class]])
 	{
 		// TODO check if local instance is dirty and compare properties?
-		value = [OFNumber numberWithUInt32: [condition.value id]];
+		value = [OFNumber numberWithUInt32: [condition.value ID]];
 	}
 
 	// TODO handle SKQuery as value

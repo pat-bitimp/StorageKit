@@ -6,27 +6,27 @@ typedef enum {
 	IsGreaterThen = 2,
 	IsLowerThen = 3,
 	IsLike = 4
-} QueryOperator;
+} SKQueryOperator;
 
 typedef enum {
 	Where = 0,
 	And = 1,
 	Or = 2
-} Binding;
+} SKBinding;
 
 @interface SKQueryCondition : OFObject
 {
 	SEL selector;
-	QueryOperator operator;
-	Binding binding;
+	SKQueryOperator operator;
+	SKBinding binding;
 	id value;
 }
 @property SEL selector;
-@property QueryOperator operator;
-@property Binding binding;
+@property SKQueryOperator operator;
+@property SKBinding binding;
 @property (copy) id value;
 + conditionForSelector: (SEL)selector 
-            andBinding: (Binding)binding
-           andOperator: (QueryOperator)operator 
+            andBinding: (SKBinding)binding
+           andOperator: (SKQueryOperator)operator 
               andValue: value;
 @end

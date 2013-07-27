@@ -30,11 +30,4 @@ static id defaultStorageDriver;
 
 	[storageDrivers setObject: storageDriver forKey: class];
 }
-
-+ (void)setMappingOptions: (MappingOptions)mappingOption 
-                 forClass: (Class)class 
-              andSelector: (SEL)selector
-{
-
-}
 @end
