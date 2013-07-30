@@ -24,7 +24,7 @@ typedef enum {
 @property SEL selector;
 @property SKQueryOperator operator;
 @property SKBinding binding;
-@property (copy) id value;
+@property (retain) id value;
 + conditionForSelector: (SEL)selector 
             andBinding: (SKBinding)binding
            andOperator: (SKQueryOperator)operator 

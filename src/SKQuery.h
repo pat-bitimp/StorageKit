@@ -1,6 +1,9 @@
 #import <ObjFW/ObjFW.h>
 #import "SKStorageDriver.h"
 #import "SKQueryCondition.h"
+#import "SKObject.h"
+
+@class SKObject;
 
 typedef enum { 
 	Unordered = 0,
@@ -18,8 +21,8 @@ typedef enum {
 	uint32_t limit;
 	uint32_t offset;
 }
-@property (copy) Class queryingClass;
-@property (copy) OFList* conditions;
+@property (assign) Class queryingClass;
+@property (retain) OFList* conditions;
 @property uint32_t limit;
 @property uint32_t offset;
 @property SKOrderDirection orderDirection;
@@ -45,7 +48,7 @@ typedef enum {
 - whereConditionComplied: (SKQueryCondition*)condition;
 - descendingOrderBy: (SEL)selector;
 - ascendingOrderBy: (SEL)selector;
-- (id)firstOrNil;
-- (OFList*)list;
+- (SKObject*)firstOrNil;
+- (OFArray*)all;
 - (int)count;
 @end

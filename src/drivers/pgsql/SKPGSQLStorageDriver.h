@@ -3,18 +3,19 @@
 #import "../../SKQuery.h"
 #import "../../SKObject.h"
 #import "../../SKQueryCondition.h"
+#import "../../SKIntrospection.h"
 
 @interface SKPGSQLStorageDriver : OFObject <SKStorageDriver>
 {
 	OFDictionary* connectionParameters;
 }
-@property (copy) OFDictionary* connectionParameters;
+@property (retain) OFDictionary* connectionParameters;
 + storageDriverWithConnectionParameters: (OFDictionary*)connectionParameters;
-- (id)getObjectForId: (uint32_t)id andClass: (Class)class;
+- (SKObject*)objectForID: (uint32_t)ID class: (Class)_class;
 - (void)deleteObject: (SKObject*)object;
 - (void)saveObject: (SKObject*)object;
 - (void)updateObject: (SKObject*)object;
-- (id)getFirstItemForQuery: (SKQuery*)query;
-- (OFList*)getAllItemsForQuery: (SKQuery*)query;
-- (int)countItemsForQuery: (SKQuery*)query;
+- (SKObject*)getFirstItemForQuery: (SKQuery*)query;
+- (OFArray*)getAllItemsForQuery: (SKQuery*)query;
+- (uint32_t)countItemsForQuery: (SKQuery*)query;
 @end

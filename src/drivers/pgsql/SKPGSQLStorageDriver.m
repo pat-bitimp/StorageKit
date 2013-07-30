@@ -55,15 +55,53 @@ static OFTLSKey* connectionMappingKey;
 	}
 }
 
-- (id)getObjectForId: (uint32_t)id andClass: (Class)class
+- (SKObject*)objectForID: (uint32_t)ID class: (Class)_class
 {
+	OFArray* propertyNames = [SKIntrospection propertyNamesForClass: _class];
 
-	return nil;
+	OFConstantString* format = @"SELECT %@ FROM \"%@\";";
+
+	OFMutableString* propertyString = [OFMutableString string];
+
+	for (OFString* propertyName in propertyNames)
+	{
+		OFString* seperator = 
+			[propertyNames lastObject] == propertyName ? @"" : @", ";
+
+		[propertyString appendString: [OFString stringWithFormat: @"\"%@\"%@", 
+			[self escapeString: propertyName], seperator]];
+	}
+
+	OFString* className = [self escapeString: 
+		[OFString stringWithUTF8String: class_getName(_class)]];
+
+	OFString* queryString = [OFString stringWithFormat: format, propertyString, 
+		className];
+
+	PGResult* result = 
+		[[self session] executeCommand: (OFConstantString*)queryString];
+
+	if ([result count] == 0)
+	{
+		return nil;
+	}
+
+	PGResultRow* row = [result objectAtIndex: 0];
+	OFMutableDictionary* data = [OFMutableDictionary dictionary];
+
+	for (OFString *propertyName in propertyNames)
+	{
+		id value = [row objectForKey: propertyName];
+		[data setObject: value forKey: propertyName];
+	}
+
+	return [SKIntrospection objectInstanceFor: _class data: data];
 }
 
 - (void)deleteObject: (SKObject*)object
 {
-	OFString* queryString = [OFString stringWithFormat: @"DELETE FROM \"%@\" WHERE "
+	OFString* queryString = 
+		[OFString stringWithFormat: @"DELETE FROM \"%@\" WHERE "
 		@"\"ID\" = %d;", [self escapeString: [object className]], [object ID]];
 
 	[[self session] executeCommand: (OFConstantString*)queryString];
@@ -71,12 +109,14 @@ static OFTLSKey* connectionMappingKey;
 
 - (void)saveObject: (SKObject*)object
 {
-	OFConstantString* format = @"INSERT INTO \"%@\"(%@) VALUES(%@) RETURNING ID;";
+	OFConstantString* format = 
+		@"INSERT INTO \"%@\"(%@) VALUES(%@) RETURNING ID;";
+
 	OFMutableString* propertyNames = [OFMutableString string];
 	OFMutableString* propertyValues = [OFMutableString string];
 
-	OFDictionary* properties = object._sk_properties;
-	OFArray* keys = [object._sk_properties allKeys];
+	OFDictionary* properties = [SKIntrospection propertiesForObject: object];
+	OFArray* keys = [properties allKeys];
 
 	for (OFString* key in keys)
 	{
@@ -96,10 +136,11 @@ static OFTLSKey* connectionMappingKey;
     									seperator]];
 	}
 
-	OFConstantString* queryString = [OFConstantString stringWithFormat: format, 
+	OFString* queryString = [OFString stringWithFormat: format, 
 		[self escapeString: [object className]], propertyNames, propertyValues];
 
-	PGResult* result = [[self session] executeCommand: queryString];
+	PGResult* result = 
+		[[self session] executeCommand: (OFConstantString*)queryString];
 
 	object.ID = [[[result objectAtIndex: 0] objectAtIndex: 0] uInt32Value];
 }
@@ -110,8 +151,8 @@ static OFTLSKey* connectionMappingKey;
 
 	OFMutableString* data = [OFMutableString string];
 
-	OFDictionary* properties = object._sk_properties;
-	OFArray* keys = [object._sk_properties allKeys];
+	OFDictionary* properties = [SKIntrospection propertiesForObject: object];
+	OFArray* keys = [properties allKeys];
 
 	for (OFString* key in keys)
 	{
@@ -127,47 +168,157 @@ static OFTLSKey* connectionMappingKey;
     									seperator]];
 	}
 
-	OFConstantString* queryString = [OFConstantString stringWithFormat: format, 
+	OFString* queryString = [OFString stringWithFormat: format, 
 		[self escapeString: [object className]], data, [object ID]];
 
-	[[self session] executeCommand: queryString];
+	[[self session] executeCommand: (OFConstantString*)queryString];
 }
 
-- (id)objectInstanceFrom: (Class)class andData: (OFDictionary*)data
+- (SKObject*)getFirstItemForQuery: (SKQuery*)query
 {
-	OFObject* instance = [class new];
+	OFConstantString* format = @"SELECT * FROM \"%@\" %@ %@ %@ %@ ;";
 
-	OFArray* keys = [data allKeys];
+	OFMutableString* conditionString = [OFMutableString string];
 
-	for (OFString* key in keys)
+	for (SKQueryCondition* condition in query.conditions)
 	{
-		OFString* selectorName = 
-			[OFString stringWithFormat: @"set%@:", [key capitalizedString]];
-
-		SEL selector = sel_registerName([selectorName UTF8String]);
-
-		void (*setValue)(id, SEL, id) = 
-			(void(*)(id, SEL, id))[instance methodForSelector: selector];
-
-		setValue(instance, selector, [data objectForKey: key]);
+		[conditionString appendString: 
+			[self buildStringForCondition: condition]];
 	}
 
-	return instance;
-} 
+	OFString* orderString = [self buildOrderStringForQuery: query];
 
-- (id)getFirstItemForQuery: (SKQuery*)query
-{
-	return nil;
+	OFString* limit = @" LIMIT 1 ";
+
+	OFString* offset = [OFString stringWithFormat: @" OFFSET %d ", query.offset];
+
+	OFString* className = [self escapeString: 
+		[OFString stringWithUTF8String: class_getName(query.queryingClass)]];
+
+	OFString* queryString = [OFString stringWithFormat: format, 
+		className, conditionString, orderString, limit, offset];
+
+	PGResult* result = 
+		[[self session] executeCommand: (OFConstantString*)queryString];
+
+	if ([result count] == 0)
+	{
+		return nil;
+	}
+
+	OFArray* propertyNames = 
+		[SKIntrospection propertyNamesForClass: query.queryingClass];
+
+	OFMutableDictionary* data = [OFMutableDictionary dictionary];
+
+	for (OFString *propertyName in propertyNames)
+	{
+		id value = [result[0] objectForKey: propertyName];
+		[data setObject: value forKey: propertyName];
+	}
+
+	return [SKIntrospection objectInstanceFor: query.queryingClass 
+									     data: data];
 }
 
-- (OFList*)getAllItemsForQuery: (SKQuery*)query
+- (OFArray*)getAllItemsForQuery: (SKQuery*)query
 {
-	return nil;
+	OFConstantString* format = @"SELECT * FROM \"%@\" %@ %@ %@ %@ ;";
+
+	OFMutableString* conditionString = [OFMutableString string];
+
+	for (SKQueryCondition* condition in query.conditions)
+	{
+		[conditionString appendString: 
+			[self buildStringForCondition: condition]];
+	}
+
+	OFString* orderString = [self buildOrderStringForQuery: query];
+
+	OFString* limit = query.limit == 0 ? 
+		@"" : [OFString stringWithFormat: @" LIMIT %d ", query.limit];
+
+	OFString* offset = [OFString stringWithFormat: @" OFFSET %d ", query.offset];
+
+	OFString* className = [self escapeString: 
+		[OFString stringWithUTF8String: class_getName(query.queryingClass)]];
+
+	OFString* queryString = [OFString stringWithFormat: format, 
+		className, conditionString, orderString, limit, offset];
+
+	PGResult* result = 
+		[[self session] executeCommand: (OFConstantString*)queryString];
+
+	if ([result count] == 0)
+	{
+		return [OFArray array];
+	}
+
+	OFMutableArray* returnArr = [OFMutableArray array];
+
+	OFArray* propertyNames = 
+		[SKIntrospection propertyNamesForClass: query.queryingClass];
+
+	for (PGResultRow* row in result)
+	{
+		OFMutableDictionary* data = [OFMutableDictionary dictionary];
+
+		for (OFString *propertyName in propertyNames)
+		{
+			id value = [row objectForKey: propertyName];
+			[data setObject: value forKey: propertyName];
+		}
+
+		[returnArr addObject: 
+			[SKIntrospection objectInstanceFor: query.queryingClass 
+										  data: data]];
+	}
+
+	return returnArr;
 }
 
-- (int)countItemsForQuery: (SKQuery*)query
+- (uint32_t)countItemsForQuery: (SKQuery*)query
 {
-	return 0;
+	OFConstantString* format = @"SELECT Count(ID) FROM \"%@\" %@;";
+
+	OFMutableString* conditionString = [OFMutableString string];
+
+	// TODO handle limit and offset
+
+	for (SKQueryCondition* condition in query.conditions)
+	{
+		[conditionString appendString: 
+			[self buildStringForCondition: condition]];
+	}
+
+	OFString* className = [self escapeString: 
+		[OFString stringWithUTF8String: class_getName(query.queryingClass)]];
+
+	OFString* queryString = 
+		[OFString stringWithFormat: format, className, conditionString];
+
+	PGResult* result = 
+		[[self session] executeCommand: (OFConstantString*)queryString];
+
+	return [[[result objectAtIndex: 0] objectAtIndex: 0] uInt32Value];;
+}
+
+- (OFString*)buildOrderStringForQuery: (SKQuery*)query
+{
+	OFConstantString* format = @" ORDER BY \"%@\" %@ ";
+
+	if (query.orderDirection == Unordered)
+	{
+		return @"";
+	}
+
+	OFConstantString* direction = 
+		query.orderDirection == Ascending ? @"ASC" : @"DESC";
+
+	OFString* selectorName = [self escapeString:
+		[OFString stringWithUTF8String: sel_getName(query.orderSelector)]];
+
+	return [OFString stringWithFormat: format, selectorName, direction];
 }
 
 - (OFString*)buildStringForCondition: (SKQueryCondition*)condition
@@ -193,19 +344,10 @@ static OFTLSKey* connectionMappingKey;
 		return [OFString stringWithFormat: @" %@ %@", selectorName, operator];
 	}
 
-	id value = condition.value;
-
-	// In case we compare with an SKObject, we want to compare the ids
-	if ([condition.value isKindOfClass: [SKObject class]])
-	{
-		// TODO check if local instance is dirty and compare properties?
-		value = [OFNumber numberWithUInt32: [condition.value ID]];
-	}
-
 	// TODO handle SKQuery as value
 
-	return [OFString stringWithFormat: @" %@ %@ %@ %@", 
-		binding, selectorName, operator, [self escapeString: [value description]]];
+	return [OFString stringWithFormat: @" %@ %@ %@ %@ ", binding, selectorName, 
+		operator, [self escapeString: [condition.value description]]];
 }
 
 - (OFString*)escapeString: (OFString*)string;

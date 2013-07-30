@@ -202,7 +202,7 @@
 	return self;
 }
 
-- (id)firstOrNil
+- (SKObject*)firstOrNil
 {
 	id <SKStorageDriver> driver = 
 		[SKManager getStorageDriverForClass: [self queryingClass]];
@@ -210,7 +210,7 @@
 	return [driver getFirstItemForQuery: self];
 }
 
-- (OFList*)list
+- (OFArray*)all
 {
 	id <SKStorageDriver> driver = 
 		[SKManager getStorageDriverForClass: [self queryingClass]];
